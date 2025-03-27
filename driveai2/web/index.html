@@ -8,214 +8,171 @@
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            padding: 0;
-            background-color: #f0f0f0;
+            padding: 20px;
+            text-align: center;
         }
         .container {
-            max-width: 1200px;
+            max-width: 800px;
             margin: 0 auto;
-            padding: 20px;
-        }
-        h1 {
-            text-align: center;
-            color: #333;
         }
         .video-container {
-            display: flex;
-            justify-content: center;
             margin-top: 20px;
+            position: relative;
         }
-        #videoElement {
-            width: 640px;
-            height: 480px;
-            background-color: #666;
-            border-radius: 10px;
+        video {
+            width: 100%;
+            border: 1px solid #ccc;
         }
-        #processedVideo {
-            width: 640px;
-            height: 480px;
-            background-color: #666;
-            border-radius: 10px;
-            margin-left: 20px;
+        canvas {
+            width: 100%;
+            border: 1px solid #ccc;
         }
         .controls {
-            display: flex;
-            justify-content: center;
             margin-top: 20px;
         }
         button {
             padding: 10px 20px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
             margin: 0 10px;
-        }
-        button:hover {
-            background-color: #45a049;
-        }
-        .info {
-            margin-top: 20px;
-            padding: 10px;
-            background-color: #fff;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        .info h2 {
-            margin-top: 0;
-            color: #333;
-        }
-        .info p {
-            margin: 5px 0;
-            color: #666;
+            font-size: 16px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>DriveAI Lane Detection</h1>
+        <p>Real-time lane detection using OpenCV and Flask</p>
+        
         <div class="video-container">
-            <video id="videoElement" autoplay></video>
-            <canvas id="processedVideo"></canvas>
+            <h2>Camera Feed</h2>
+            <video id="video" autoplay playsinline></video>
         </div>
+        
+        <div class="video-container">
+            <h2>Processed Feed with Lane Detection</h2>
+            <canvas id="canvas"></canvas>
+        </div>
+        
         <div class="controls">
-            <button id="startButton">Start</button>
-            <button id="stopButton">Stop</button>
+            <button id="startBtn">Start</button>
+            <button id="stopBtn">Stop</button>
         </div>
-        <div class="info">
-            <h2>Lane Detection Info</h2>
-            <p id="curvature">Radius of Curvature: N/A</p>
-            <p id="deviation">Vehicle Position: N/A</p>
-        </div>
+        
+        <div id="info" style="margin-top: 20px;"></div>
     </div>
 
     <script>
-        const videoElement = document.getElementById('videoElement');
-        const processedVideo = document.getElementById('processedVideo');
-        const ctx = processedVideo.getContext('2d');
-        const startButton = document.getElementById('startButton');
-        const stopButton = document.getElementById('stopButton');
-        const curvatureElement = document.getElementById('curvature');
-        const deviationElement = document.getElementById('deviation');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const info = document.getElementById('info');
         
-        let stream = null;
-        let isProcessing = false;
-        let processingInterval = null;
+        let stream;
+        let intervalId;
         
-        // Set canvas dimensions
-        processedVideo.width = 640;
-        processedVideo.height = 480;
+        // Set up the canvas size
+        function setupCanvas() {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+        }
         
-        // Start the video stream
-        async function startVideo() {
+        // Start the camera
+        async function startCamera() {
             try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                videoElement.srcObject = stream;
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    } 
+                });
+                video.srcObject = stream;
                 
-                // Start processing frames
-                startProcessing();
+                video.onloadedmetadata = () => {
+                    setupCanvas();
+                    startProcessing();
+                };
+                
+                info.textContent = 'Camera started';
             } catch (err) {
                 console.error('Error accessing camera:', err);
-                alert('Error accessing camera. Please make sure you have a camera connected and have granted permission to use it.');
+                info.textContent = 'Error accessing camera: ' + err.message;
             }
         }
         
-        // Stop the video stream
-        function stopVideo() {
+        // Stop the camera
+        function stopCamera() {
             if (stream) {
-                const tracks = stream.getTracks();
-                tracks.forEach(track => track.stop());
-                videoElement.srcObject = null;
-                stream = null;
-                
-                // Stop processing frames
-                stopProcessing();
+                stream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
             }
-        }
-        
-        // Start processing frames
-        function startProcessing() {
-            if (isProcessing) return;
             
-            isProcessing = true;
-            
-            // Process frames at regular intervals
-            processingInterval = setInterval(processFrame, 100);
-        }
-        
-        // Stop processing frames
-        function stopProcessing() {
-            if (!isProcessing) return;
-            
-            isProcessing = false;
-            
-            // Clear the processing interval
-            if (processingInterval) {
-                clearInterval(processingInterval);
-                processingInterval = null;
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
             }
+            
+            info.textContent = 'Camera stopped';
         }
         
-        // Process a single frame
-        async function processFrame() {
-            if (!isProcessing || !stream) return;
-            
-            try {
-                // Draw the current video frame to a canvas
-                const canvas = document.createElement('canvas');
-                canvas.width = videoElement.videoWidth;
-                canvas.height = videoElement.videoHeight;
-                const context = canvas.getContext('2d');
-                context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+        // Process the video frame
+        function processFrame() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                // Draw the video frame to the canvas
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 
-                // Get the image data as base64
-                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                // Get the image data from the canvas
+                const imageData = canvas.toDataURL('image/jpeg');
                 
                 // Send the image data to the server for processing
-                const response = await fetch('/process_frame', {
+                fetch('/process_frame', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ image: imageData })
-                });
-                
-                // Parse the response
-                const data = await response.json();
-                
-                if (data.error) {
-                    console.error('Error processing frame:', data.error);
-                    return;
-                }
-                
-                // Display the processed image
-                const image = new Image();
-                image.onload = () => {
-                    ctx.drawImage(image, 0, 0, processedVideo.width, processedVideo.height);
-                };
-                image.src = data.image;
-                
-                // Update the lane detection info
-                if (data.lanes) {
-                    if (data.lanes.left_curverad) {
-                        curvatureElement.textContent = `Radius of Curvature: ${data.lanes.left_curverad.toFixed(1)}m`;
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error processing frame:', data.error);
+                        return;
                     }
                     
-                    if (data.lanes.deviation) {
-                        const direction = data.lanes.deviation < 0 ? 'left' : 'right';
-                        deviationElement.textContent = `Vehicle Position: ${Math.abs(data.lanes.deviation).toFixed(3)}m ${direction} of center`;
+                    // Display the processed image
+                    const img = new Image();
+                    img.onload = () => {
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    };
+                    img.src = data.image;
+                    
+                    // Display lane info
+                    if (data.lanes) {
+                        const laneInfo = data.lanes;
+                        if (laneInfo.deviation !== undefined) {
+                            const direction = laneInfo.deviation < 0 ? 'left' : 'right';
+                            info.textContent = `Vehicle is ${Math.abs(laneInfo.deviation).toFixed(3)}m ${direction} of center`;
+                        }
                     }
-                }
-            } catch (e) {
-                console.error('Error processing frame:', e);
+                })
+                .catch(err => {
+                    console.error('Error sending frame to server:', err);
+                });
+            }
+        }
+        
+        // Start processing frames
+        function startProcessing() {
+            if (!intervalId) {
+                intervalId = setInterval(processFrame, 100);  // Process 10 frames per second
             }
         }
         
         // Event listeners
-        startButton.addEventListener('click', startVideo);
-        stopButton.addEventListener('click', stopVideo);
+        startBtn.addEventListener('click', startCamera);
+        stopBtn.addEventListener('click', stopCamera);
     </script>
 </body>
 </html>

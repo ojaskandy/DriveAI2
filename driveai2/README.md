@@ -47,38 +47,37 @@ python web_server.py
 
 This project is configured to be deployed to Render. Follow these steps to deploy:
 
-1. Push the code to GitHub:
-
-```bash
-# Initialize a git repository (if not already done)
-git init
-
-# Add all files to the repository
-git add .
-
-# Commit the changes
-git commit -m "Initial commit"
-
-# Add the remote repository
-git remote add origin https://github.com/ojaskandy/DriveAI2.git
-
-# Push to GitHub
-git push -u origin main
-```
-
-2. Create a new Web Service on Render:
+1. Create a new Web Service on Render:
 
    - Sign in to your Render account
    - Click "New" and select "Web Service"
-   - Connect your GitHub repository
+   - Connect your GitHub repository (https://github.com/ojaskandy/DriveAI2.git)
    - Use the following settings:
      - **Name**: DriveAI-Lane-Detection (or any name you prefer)
-     - **Environment**: Python
+     - **Environment**: Python 3
+     - **Region**: Choose the region closest to your users
+     - **Branch**: main
      - **Build Command**: `pip install -r requirements.txt`
-     - **Start Command**: `python web_server.py`
+     - **Start Command**: `gunicorn web_server:app`
    - Click "Create Web Service"
 
-3. Render will automatically deploy your application. Once deployed, you can access it at the URL provided by Render.
+2. Render will automatically deploy your application. Once deployed, you can access it at the URL provided by Render.
+
+### Deployment Configuration
+
+The following files are used for deployment:
+
+- **requirements.txt**: Lists the Python dependencies
+- **runtime.txt**: Specifies the Python version (3.9.16)
+- **Procfile**: Tells Render how to run the application using Gunicorn
+- **web_server.py**: The main application file, configured to work with Gunicorn
+
+### Using the Deployed Application
+
+1. Open the URL provided by Render in your web browser
+2. Click the "Start" button to start your camera
+3. The application will process the camera feed and display lane detection results
+4. Click the "Stop" button to stop the camera feed
 
 ## Lane Detection Algorithm
 

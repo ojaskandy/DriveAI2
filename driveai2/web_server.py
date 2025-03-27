@@ -179,11 +179,195 @@ def process_image(image):
         # Return the original image if processing fails
         return image, {}
 
+# Create the web directory if it doesn't exist
+if not os.path.exists('web'):
+    os.makedirs('web')
+
+# Create a simple index.html file if it doesn't exist
+if not os.path.exists('web/index.html'):
+    with open('web/index.html', 'w') as f:
+        f.write('''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DriveAI Lane Detection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .video-container {
+            margin-top: 20px;
+            position: relative;
+        }
+        video {
+            width: 100%;
+            border: 1px solid #ccc;
+        }
+        canvas {
+            width: 100%;
+            border: 1px solid #ccc;
+        }
+        .controls {
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DriveAI Lane Detection</h1>
+        <p>Real-time lane detection using OpenCV and Flask</p>
+        
+        <div class="video-container">
+            <h2>Camera Feed</h2>
+            <video id="video" autoplay playsinline></video>
+        </div>
+        
+        <div class="video-container">
+            <h2>Processed Feed with Lane Detection</h2>
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn">Start</button>
+            <button id="stopBtn">Stop</button>
+        </div>
+        
+        <div id="info" style="margin-top: 20px;"></div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const info = document.getElementById('info');
+        
+        let stream;
+        let intervalId;
+        
+        // Set up the canvas size
+        function setupCanvas() {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+        }
+        
+        // Start the camera
+        async function startCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    } 
+                });
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    setupCanvas();
+                    startProcessing();
+                };
+                
+                info.textContent = 'Camera started';
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                info.textContent = 'Error accessing camera: ' + err.message;
+            }
+        }
+        
+        // Stop the camera
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+            
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+            
+            info.textContent = 'Camera stopped';
+        }
+        
+        // Process the video frame
+        function processFrame() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                // Draw the video frame to the canvas
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Get the image data from the canvas
+                const imageData = canvas.toDataURL('image/jpeg');
+                
+                // Send the image data to the server for processing
+                fetch('/process_frame', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ image: imageData })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error processing frame:', data.error);
+                        return;
+                    }
+                    
+                    // Display the processed image
+                    const img = new Image();
+                    img.onload = () => {
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    };
+                    img.src = data.image;
+                    
+                    // Display lane info
+                    if (data.lanes) {
+                        const laneInfo = data.lanes;
+                        if (laneInfo.deviation !== undefined) {
+                            const direction = laneInfo.deviation < 0 ? 'left' : 'right';
+                            info.textContent = `Vehicle is ${Math.abs(laneInfo.deviation).toFixed(3)}m ${direction} of center`;
+                        }
+                    }
+                })
+                .catch(err => {
+                    console.error('Error sending frame to server:', err);
+                });
+            }
+        }
+        
+        // Start processing frames
+        function startProcessing() {
+            if (!intervalId) {
+                intervalId = setInterval(processFrame, 100);  // Process 10 frames per second
+            }
+        }
+        
+        // Event listeners
+        startBtn.addEventListener('click', startCamera);
+        stopBtn.addEventListener('click', stopCamera);
+    </script>
+</body>
+</html>
+        ''')
+
 if __name__ == '__main__':
-    # Create the web directory if it doesn't exist
-    if not os.path.exists('web'):
-        os.makedirs('web')
-    
     # Get port from environment variable (for Render deployment)
     port = int(os.environ.get('PORT', 8080))
     
